@@ -118,10 +118,12 @@ def evaluate(net_g, net_d, dataloader, nz, device, samples_z=None):
     with torch.no_grad():
 
         # Initialize metrics
-        is_, fid, kid, imgs_real, imgs_fake, loss_gs, loss_ds, real_preds, fake_preds = (
+        is_, fid, kid, fake_imgs, real_imgs, loss_gs, loss_ds, real_preds, fake_preds = (
             IS().to(device),
             FID().to(device),
             KID().to(device),
+            [],
+            [],
             [],
             [],
             [],
@@ -155,6 +157,8 @@ def evaluate(net_g, net_d, dataloader, nz, device, samples_z=None):
             fake_preds.append(compute_prob(fake_pred))
             reals = prepare_data_for_inception(reals, device)
             fakes = prepare_data_for_inception(fakes, device)
+            fake_imgs.append(fakes)
+            real_imgs.append(reals)
             is_.update(fakes)
 
             fid.update(reals, real=True)
@@ -164,8 +168,8 @@ def evaluate(net_g, net_d, dataloader, nz, device, samples_z=None):
 
 
         # Process metrics
-        IS2 = inception_score(dataloader)
-        BCIS, WCIS = conditional_inception_score(dataloader))
+        IS2 = inception_score(torch.cat(fakes))
+        BCIS, WCIS = conditional_inception_score(dataloader)
         metrics = {
             "L(G)": torch.stack(loss_gs).mean().item(),
             "L(D)": torch.stack(loss_ds).mean().item(),

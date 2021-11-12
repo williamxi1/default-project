@@ -47,14 +47,14 @@ def get_dataloaders(data_dir, imsize, batch_size, eval_size, num_workers=1):
     return train_dataloader, eval_dataloader
 
 #https://github.com/sbarratt/inception-score-pytorch/blob/master/inception_score.py
-def inception_score(eval_dataloader, cuda=True, batch_size=64, resize=False, splits=1):
+def inception_score(imgs, cuda=True, batch_size=64, resize=False, splits=1):
     """Computes the inception score of the generated images imgs
     imgs -- Torch dataset of (3xHxW) numpy images normalized in the range [-1, 1]
     cuda -- whether or not to run on GPU
     batch_size -- batch size for feeding into Inception v3
     splits -- number of splits
     """
-    N = len(eval_dataloader.dataset)
+    N = imgs.shape[0]
     print(f"Eval Dataset Size: {N}")
     assert batch_size > 0
     assert N > batch_size
@@ -79,14 +79,13 @@ def inception_score(eval_dataloader, cuda=True, batch_size=64, resize=False, spl
 
     # Get predictions
     preds = np.zeros((N, 1000))
-    for i, batch in enumerate(eval_dataloader, 0):
-        img_batch, class_batch = batch
+    for i in range(N//batch_size+ 1):
+        batch_size_i = (N % batch_size) if i == N//batch_size else batch_size
+        img_batch= imgs[i*batch_size:i*batch_size + batch_size_i]
         img_batch = img_batch.type(dtype)
 
         #MAYBE REMOVE THIS LINE
         img_batchv = Variable(img_batch)
-        batch_size_i = batch.size()[0]
-
         preds[i*batch_size:i*batch_size + batch_size_i] = get_pred(img_batchv)
 
     # Now compute the mean kl-div
@@ -99,7 +98,7 @@ def inception_score(eval_dataloader, cuda=True, batch_size=64, resize=False, spl
     return _IS
 
 
-def conditional_inception_score(eval_dataloader, cuda=True, batch_size=64, resize=False, splits=1):
+def conditional_inception_score(imgs, pred_classes, cuda=True, batch_size=64, resize=False, splits=1):
     """Computes the conditional inception score of the generated images imgs
     imgs -- Torch dataset of (3xHxW) numpy images normalized in the range [-1, 1]
     classes -- List of classes of each image 
@@ -109,10 +108,11 @@ def conditional_inception_score(eval_dataloader, cuda=True, batch_size=64, resiz
 
     returns the between-class inception score (BCIS) and the within-class inception score (WCIS)
     """
-    N = len(eval_dataloader.dataset)
+    N = imgs.shape[0]
     print(f"Eval Dataset Size: {N}")
 
     num_classes = 120
+    
     assert batch_size > 0
     assert N > batch_size
 
@@ -136,31 +136,30 @@ def conditional_inception_score(eval_dataloader, cuda=True, batch_size=64, resiz
 
     # Get predictions
     preds = np.zeros((N, 1000))
-    preds_classes = np.zeros(N)
 
-    for i, batch in enumerate(eval_dataloader, 0):
-        img_batch, class_batch = batch
+    for i in range(N//batch_size+ 1):
+        batch_size_i = (N % batch_size) if i == N//batch_size else batch_size
+        img_batch = imgs[i*batch_size:i*batch_size + batch_size_i]
         img_batch = img_batch.type(dtype)
 
         #MAYBE REMOVE THIS LINE
         img_batchv = Variable(img_batch)
-        batch_size_i = batch.size()[0]
 
         preds[i*batch_size:i*batch_size + batch_size_i] = get_pred(img_batchv)
-        preds_classes[i*batch_size:i*batch_size + batch_size_i] = class_batch
 
     # Now compute the mean kl-div
     py = np.mean(preds, axis=0)
     pyc = []
     class_cnt = []
     for c in range(num_classes):
-        where_c = (preds_classes == c)
+        where_c = (pred_classes == c)
         preds_c = preds[where_c]
         num_c = torch.sum(where_c)
+        class_cnt.append(num_c)
         pyc.append(np.mean(preds_c))
     
+    print(class_cnt)
     assert np.sum(class_cnt) == N
-
     scores = []
     BCIS = 0
     WCIS = 0
@@ -170,12 +169,13 @@ def conditional_inception_score(eval_dataloader, cuda=True, batch_size=64, resiz
         BCIS += p_class * KL_PYC_PY
 
         KL_PYX_PYC = 0
-        where_c = (preds_classes == c)
+        where_c = (pred_classes == c)
         preds_c = preds[where_c]
         num_c = torch.sum(where_c)
 
         for i in range(num_c):
             KL_PYX_PYC += 1/num_c  * entropy(preds_c[i,:], pyc[c])
         WCIS += p_class * KL_PYX_PYC
- 
+    BCIS = np.exp(BCIS)
+    WCIS = np.exp(WCIS)
     return BCIS, WCIS
