@@ -24,6 +24,11 @@ def parse_args():
         help="Path to dataset directory.",
     )
     parser.add_argument(
+        "--conditional",
+        default=False,
+        help="Use Conditional GAN",
+    )
+    parser.add_argument(
         "--out_dir",
         type=str,
         default=os.path.join(root_dir, "out"),
@@ -137,14 +142,19 @@ def train(args):
     nz, lr, betas, eval_size, num_workers = (128, 2e-4, (0.0, 0.9), 1000, 4)
 
     # Configure models
-    if args.im_size == 32:
-        net_g = Generator32()
-        net_d = Discriminator32()
-    elif args.im_size == 64:
-        net_g = Generator64()
-        net_d = Discriminator64()
+    if args.conditional:
+        if args.im_size == 32:
+            net_g = ConditionalGenerator32()
+            net_d = ConditionalDiscriminator32()
     else:
-        raise NotImplementedError(f"Unsupported image size '{args.im_size}'.")
+        if args.im_size == 32:
+            net_g = Generator32()
+            net_d = Discriminator32()
+        elif args.im_size == 64:
+            net_g = Generator64()
+            net_d = Discriminator64()
+        else:
+            raise NotImplementedError(f"Unsupported image size '{args.im_size}'.")
 
     # Configure optimizers
     opt_g = optim.Adam(net_g.parameters(), lr, betas)
@@ -180,7 +190,10 @@ def train(args):
     )
 
     # Train model
-    trainer.train(args.max_steps, args.repeat_d, args.eval_every, args.ckpt_every)
+    if args.conditional:
+        trainer.train_conditional(args.max_steps, args.repeat_d, args.eval_every, args.ckpt_every)
+    else:
+        trainer.train(args.max_steps, args.repeat_d, args.eval_every, args.ckpt_every)
 
 
 if __name__ == "__main__":

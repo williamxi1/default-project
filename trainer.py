@@ -72,6 +72,18 @@ def compute_loss_g(net_g, net_d, z, loss_func_g):
     return loss_g, fakes, fake_preds
 
 
+def compute_loss_g_conditional(net_g, net_d, z, classes, loss_func_g):
+    r"""
+    General implementation to compute generator loss.
+    """
+
+    fakes = net_g(z, classes)
+    fake_preds = net_d(fakes, classes).view(-1)
+    loss_g = loss_func_g(fake_preds)
+
+    return loss_g, fakes, fake_preds
+
+
 def compute_loss_d(net_g, net_d, reals, z, loss_func_d):
     r"""
     General implementation to compute discriminator loss.
@@ -80,6 +92,18 @@ def compute_loss_d(net_g, net_d, reals, z, loss_func_d):
     real_preds = net_d(reals).view(-1)
     fakes = net_g(z).detach()
     fake_preds = net_d(fakes).view(-1)
+    loss_d = loss_func_d(real_preds, fake_preds)
+
+    return loss_d, fakes, real_preds, fake_preds
+
+def compute_loss_d_conditional(net_g, net_d, reals, z, classes, loss_func_d):
+    r"""
+    General implementation to compute discriminator loss.
+    """
+
+    real_preds = net_d(reals, classes).view(-1)
+    fakes = net_g(z, classes).detach()
+    fake_preds = net_d(fakes, classes).view(-1)
     loss_d = loss_func_d(real_preds, fake_preds)
 
     return loss_d, fakes, real_preds, fake_preds
@@ -99,8 +123,85 @@ def train_step(net, opt, sch, compute_loss):
 
     return loss
 
-
 def evaluate(net_g, net_d, dataloader, nz, device, samples_z=None):
+    r"""
+    Evaluates model and logs metrics.
+    Attributes:
+        net_g (Module): Torch generator model.
+        net_d (Module): Torch discriminator model.
+        dataloader (Dataloader): Torch evaluation set dataloader.
+        nz (int): Generator input / noise dimension.
+        device (Device): Torch device to perform evaluation on.
+        samples_z (Tensor): Noise tensor to generate samples.
+    """
+
+    net_g.to(device).eval()
+    net_d.to(device).eval()
+
+    with torch.no_grad():
+
+        # Initialize metrics
+        is_, fid, kid, loss_gs, loss_ds, real_preds, fake_preds = (
+            IS().to(device),
+            FID().to(device),
+            KID().to(device),
+            [],
+            [],
+            [],
+            [],
+        )
+
+        for data, _ in tqdm(dataloader, desc="Evaluating Model"):
+
+            # Compute losses and save intermediate outputs
+            reals, z = prepare_data_for_gan(data, nz, device)
+            loss_d, fakes, real_pred, fake_pred = compute_loss_d(
+                net_g,
+                net_d,
+                reals,
+                z,
+                hinge_loss_d,
+            )
+            loss_g, _, _ = compute_loss_g(
+                net_g,
+                net_d,
+                z,
+                hinge_loss_g,
+            )
+
+            # Update metrics
+            loss_gs.append(loss_g)
+            loss_ds.append(loss_d)
+            real_preds.append(compute_prob(real_pred))
+            fake_preds.append(compute_prob(fake_pred))
+            reals = prepare_data_for_inception(reals, device)
+            fakes = prepare_data_for_inception(fakes, device)
+            is_.update(fakes)
+            fid.update(reals, real=True)
+            fid.update(fakes, real=False)
+            kid.update(reals, real=True)
+            kid.update(fakes, real=False)
+
+        # Process metrics
+        metrics = {
+            "L(G)": torch.stack(loss_gs).mean().item(),
+            "L(D)": torch.stack(loss_ds).mean().item(),
+            "D(x)": torch.stack(real_preds).mean().item(),
+            "D(G(z))": torch.stack(fake_preds).mean().item(),
+            "IS": is_.compute()[0].item(),
+            "FID": fid.compute().item(),
+            "KID": kid.compute()[0].item(),
+        }
+
+        # Create samples
+        if samples_z is not None:
+            samples = net_g(samples_z)
+            samples = F.interpolate(samples, 256).cpu()
+            samples = vutils.make_grid(samples, nrow=6, padding=4, normalize=True)
+
+    return metrics if samples_z is None else (metrics, samples)
+
+def evaluate_conditional(net_g, net_d, dataloader, nz, device, samples_z=None):
     r"""
     Evaluates model and logs metrics.
     Attributes:
@@ -130,23 +231,23 @@ def evaluate(net_g, net_d, dataloader, nz, device, samples_z=None):
             [],
         )
 
-
-
         for data, classes in tqdm(dataloader, desc="Evaluating Model"):
             
             # Compute losses and save intermediate outputs
             reals, z = prepare_data_for_gan(data, nz, device)
-            loss_d, fakes, real_pred, fake_pred = compute_loss_d(
+            loss_d, fakes, real_pred, fake_pred = compute_loss_d_conditional(
                 net_g,
                 net_d,
                 reals,
                 z,
+                classes,
                 hinge_loss_d,
             )
-            loss_g, _, _ = compute_loss_g(
+            loss_g, _, _ = compute_loss_g_conditional(
                 net_g,
                 net_d,
                 z,
+                classes,
                 hinge_loss_g,
             )
 
@@ -168,8 +269,8 @@ def evaluate(net_g, net_d, dataloader, nz, device, samples_z=None):
 
 
         # Process metrics
-        IS2 = inception_score(torch.cat(fakes))
-        BCIS, WCIS = conditional_inception_score(dataloader)
+        IS2 = inception_score(torch.cat(fake_imgs))
+        BCIS, WCIS = conditional_inception_score(torch.cat(fake_imgs))
         metrics = {
             "L(G)": torch.stack(loss_gs).mean().item(),
             "L(D)": torch.stack(loss_ds).mean().item(),
@@ -182,7 +283,7 @@ def evaluate(net_g, net_d, dataloader, nz, device, samples_z=None):
             "FID": fid.compute().item(),
             "KID": kid.compute()[0].item(),
         }
-
+        print(metrics)
         # Create samples
         if samples_z is not None:
             samples = net_g(samples_z)
@@ -337,13 +438,14 @@ class Trainer:
             repeat_d (int): Number of discriminator updates before a generator update.
             eval_every (int): Number of steps before logging to Tensorboard.
             ckpt_every (int): Number of steps before checkpointing models.
+            cond: Whether or not using conditional training
         """
 
         self._load_checkpoint()
 
         while True:
             pbar = tqdm(self.train_dataloader)
-            for data, classes in pbar:
+            for data, _ in pbar:
 
                 # Training step
                 reals, z = prepare_data_for_gan(data, self.nz, self.device)
@@ -359,6 +461,90 @@ class Trainer:
                 if self.step != 0 and self.step % eval_every == 0:
                     self._log(
                         *evaluate(
+                            self.net_g,
+                            self.net_d,
+                            self.eval_dataloader,
+                            self.nz,
+                            self.device,
+                            samples_z=self.fixed_z,
+                        )
+                    )
+
+                if self.step != 0 and self.step % ckpt_every == 0:
+                    self._save_checkpoint()
+
+                self.step += 1
+                if self.step > max_steps:
+                    return
+
+    def _train_step_g_conditional(self, z, classes):
+        r"""
+        Performs a generator training step.
+        """
+
+        return train_step(
+            self.net_g,
+            self.opt_g,
+            self.sch_g,
+            lambda: compute_loss_g_conditional(
+                self.net_g,
+                self.net_d,
+                z,
+                classes,
+                hinge_loss_g,
+            )[0],
+        )
+
+    def _train_step_d_conditional(self, reals, z, classes):
+        r"""
+        Performs a discriminator training step.
+        """
+
+        return train_step(
+            self.net_d,
+            self.opt_d,
+            self.sch_d,
+            lambda: compute_loss_d_conditional(
+                self.net_g,
+                self.net_d,
+                reals,
+                z,
+                classes,
+                hinge_loss_d,
+            )[0],
+        )
+
+    def train_conditional(self, max_steps, repeat_d, eval_every, ckpt_every):
+        r"""
+        Performs Conditional GAN training, checkpointing and logging.
+        Attributes:
+            max_steps (int): Number of steps before stopping.
+            repeat_d (int): Number of discriminator updates before a generator update.
+            eval_every (int): Number of steps before logging to Tensorboard.
+            ckpt_every (int): Number of steps before checkpointing models.
+            cond: Whether or not using conditional training
+        """
+
+        self._load_checkpoint()
+
+        while True:
+            pbar = tqdm(self.train_dataloader)
+            for data, classes in pbar:
+
+                # Training step
+                reals, z = prepare_data_for_gan(data, self.nz, self.device)
+                
+                loss_d = self._train_step_d_conditional(reals, z, classes)
+                if self.step % repeat_d == 0:
+                    loss_g = self._train_step_g_conditional(z, classes)
+
+                pbar.set_description(
+                    f"L(G):{loss_g.item():.2f}|L(D):{loss_d.item():.2f}|{self.step}/{max_steps}"
+                )
+
+                if self.step != 0 and self.step % eval_every == 0:
+                    self._log(
+                        *evaluate_conditional(
                             self.net_g,
                             self.net_d,
                             self.eval_dataloader,
