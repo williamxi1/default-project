@@ -20,7 +20,7 @@ def parse_args():
     parser.add_argument(
         "--data_dir",
         type=str,
-        default=os.path.join(root_dir, "data"),
+        default=os.path.join(root_dir, "data/Images"),
         help="Path to dataset directory.",
     )
     parser.add_argument(

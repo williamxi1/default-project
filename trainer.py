@@ -9,6 +9,7 @@ import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.utils as vutils
 from torchmetrics import IS, FID, KID
+from util import inception_score, conditional_inception_score
 
 
 def prepare_data_for_inception(x, device):
@@ -117,7 +118,7 @@ def evaluate(net_g, net_d, dataloader, nz, device, samples_z=None):
     with torch.no_grad():
 
         # Initialize metrics
-        is_, fid, kid, loss_gs, loss_ds, real_preds, fake_preds = (
+        is_, fid, kid, imgs_real, imgs_fake, loss_gs, loss_ds, real_preds, fake_preds = (
             IS().to(device),
             FID().to(device),
             KID().to(device),
@@ -127,8 +128,10 @@ def evaluate(net_g, net_d, dataloader, nz, device, samples_z=None):
             [],
         )
 
-        for data, _ in tqdm(dataloader, desc="Evaluating Model"):
 
+
+        for data, classes in tqdm(dataloader, desc="Evaluating Model"):
+            
             # Compute losses and save intermediate outputs
             reals, z = prepare_data_for_gan(data, nz, device)
             loss_d, fakes, real_pred, fake_pred = compute_loss_d(
@@ -153,18 +156,25 @@ def evaluate(net_g, net_d, dataloader, nz, device, samples_z=None):
             reals = prepare_data_for_inception(reals, device)
             fakes = prepare_data_for_inception(fakes, device)
             is_.update(fakes)
+
             fid.update(reals, real=True)
             fid.update(fakes, real=False)
             kid.update(reals, real=True)
             kid.update(fakes, real=False)
 
+
         # Process metrics
+        IS2 = inception_score(dataloader)
+        BCIS, WCIS = conditional_inception_score(dataloader))
         metrics = {
             "L(G)": torch.stack(loss_gs).mean().item(),
             "L(D)": torch.stack(loss_ds).mean().item(),
             "D(x)": torch.stack(real_preds).mean().item(),
             "D(G(z))": torch.stack(fake_preds).mean().item(),
             "IS": is_.compute()[0].item(),
+            "IS2": IS2,
+            "BCIS": BCIS,
+            "WCIS": WCIS,
             "FID": fid.compute().item(),
             "KID": kid.compute()[0].item(),
         }
@@ -329,10 +339,11 @@ class Trainer:
 
         while True:
             pbar = tqdm(self.train_dataloader)
-            for data, _ in pbar:
+            for data, classes in pbar:
 
                 # Training step
                 reals, z = prepare_data_for_gan(data, self.nz, self.device)
+                
                 loss_d = self._train_step_d(reals, z)
                 if self.step % repeat_d == 0:
                     loss_g = self._train_step_g(z)
