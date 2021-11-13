@@ -26,6 +26,7 @@ def parse_args():
     parser.add_argument(
         "--conditional",
         default=False,
+        action="store_true",
         help="Use Conditional GAN",
     )
     parser.add_argument(

@@ -110,7 +110,8 @@ def conditional_inception_score(imgs, pred_classes, cuda=True, batch_size=64, re
     """
     N = imgs.shape[0]
     print(f"Eval Dataset Size: {N}")
-
+    #move pred classes to cpu
+    pred_classes = pred_classes.cpu()
     num_classes = 120
     
     assert batch_size > 0
@@ -155,26 +156,29 @@ def conditional_inception_score(imgs, pred_classes, cuda=True, batch_size=64, re
         where_c = (pred_classes == c)
         preds_c = preds[where_c]
         num_c = torch.sum(where_c)
-        class_cnt.append(num_c)
-        pyc.append(np.mean(preds_c))
-    
-    print(class_cnt)
+        class_cnt.append(num_c.item())
+        pyc.append(np.mean(preds_c, axis=0))
+        
+ #   print(class_cnt)
     assert np.sum(class_cnt) == N
     scores = []
     BCIS = 0
     WCIS = 0
     for c in range(num_classes):
         p_class = class_cnt[c]/N
+        #print(torch.sum(pyc[c]), torch.sum(py))
         KL_PYC_PY = entropy(pyc[c], py)
         BCIS += p_class * KL_PYC_PY
-
+        
         KL_PYX_PYC = 0
         where_c = (pred_classes == c)
         preds_c = preds[where_c]
-        num_c = torch.sum(where_c)
+        num_c = torch.sum(where_c).item()
 
         for i in range(num_c):
             KL_PYX_PYC += 1/num_c  * entropy(preds_c[i,:], pyc[c])
+
+#        print(class_cnt[c], p_class, KL_PYC_PY, KL_PYX_PYC, BCIS, WCIS)
         WCIS += p_class * KL_PYX_PYC
     BCIS = np.exp(BCIS)
     WCIS = np.exp(WCIS)
