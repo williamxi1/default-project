@@ -4,10 +4,12 @@ import argparse
 
 import torch
 import torch.optim as optim
+from torchvision import datasets
 
 import util
 from model import *
 from trainer import Trainer
+import torchvision.transforms as transforms
 
 
 def parse_args():
@@ -117,8 +119,10 @@ def train(args):
     pprint.pprint(vars(args))
 
     # Setup dataset
-    if not os.path.exists(args.data_dir):
-        raise FileNotFoundError(f"Data directory 'args.data_dir' is not found.")
+    # CHANGE BACK, CURRENTLY DIFFERENT
+    #if not os.path.exists(args.data_dir):
+        #raise FileNotFoundError(f"Data directory 'args.data_dir' is not found.")
+
 
     # Check existing experiment
     exp_dir = os.path.join(args.out_dir, args.name)
@@ -170,9 +174,41 @@ def train(args):
     )
 
     # Configure dataloaders
-    train_dataloader, eval_dataloader = util.get_dataloaders(
-        args.data_dir, args.im_size, args.batch_size, eval_size, num_workers
+    #train_dataloader, eval_dataloader = util.get_dataloaders(
+        #args.data_dir, args.im_size, args.batch_size, eval_size, num_workers
+    #)
+
+    #skipping the data loader for now, directly pull dataset from torchvision.datasets
+    #revert to old
+    transform = transforms.Compose(
+        [
+            transforms.Grayscale(3),
+            transforms.Resize(args.im_size),
+            transforms.CenterCrop(args.im_size),
+            transforms.ToTensor(),
+            #transforms.Lambda(lambda x: x.repeat(3, 1, 1)),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+        ]
     )
+
+    mnist = datasets.MNIST(root= "/Data", download = True, transform = transform)
+
+    eval_dataset, train_dataset = torch.utils.data.random_split(
+        mnist,
+        [eval_size, len(mnist) - eval_size],
+    )
+
+    eval_dataloader = torch.utils.data.DataLoader(
+        eval_dataset, batch_size= args.batch_size, num_workers = num_workers
+    )
+    train_dataloader = torch.utils.data.DataLoader(
+        train_dataset,
+        batch_size= args.batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+    )
+    #revert to old end
+
 
     # Configure trainer
     trainer = Trainer(

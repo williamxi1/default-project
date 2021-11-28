@@ -67,7 +67,8 @@ def download(args):
     """
 
     download_data(
-        args.data_dir, url="http://vision.stanford.edu/aditya86/ImageNetDogs/images.tar"
+        args.data_dir,
+        url = "http://vision.stanford.edu/aditya86/ImageNetDogs/images.tar" # "http://yann.lecun.com/exdb/mnist/"   #
     )
 
     download_data(
