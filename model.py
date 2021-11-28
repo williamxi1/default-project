@@ -132,7 +132,7 @@ class ConditionalDiscriminator32(nn.Module):
 
     def forward(self, x, c):
         c_emb = self.embed(c)
-        c_emb = c_emb.reshape((1,1,32,32))
+        c_emb = c_emb.reshape((c.shape[0],1,32,32))
         h = torch.cat(x, c_emb, dim = 1)
         h = self.block1(h)
         h = self.block2(h)

@@ -9,7 +9,7 @@ import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.utils as vutils
 from torchmetrics import IS, FID, KID
-from util import inception_score, conditional_inception_score
+from metrics import inception_score, conditional_inception_score
 
 
 def prepare_data_for_inception(x, device):
@@ -25,7 +25,7 @@ def prepare_data_for_inception(x, device):
     return x.to(device).to(torch.uint8)
 
 
-def prepare_data_for_gan(x, nz, device):
+def prepare_data_for_gan(x, nz, device, classes):
     r"""
     Helper function to prepare inputs for model.
     """
@@ -33,6 +33,7 @@ def prepare_data_for_gan(x, nz, device):
     return (
         x.to(device),
         torch.randn((x.size(0), nz)).to(device),
+        classes.to(device),
     )
 
 
@@ -532,7 +533,7 @@ class Trainer:
             for data, classes in pbar:
 
                 # Training step
-                reals, z = prepare_data_for_gan(data, self.nz, self.device)
+                reals, z, classes = prepare_data_for_gan(data, self.nz, self.device, classes)
                 
                 loss_d = self._train_step_d_conditional(reals, z, classes)
                 if self.step % repeat_d == 0:
