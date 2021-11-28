@@ -193,7 +193,7 @@ def evaluate(net_g, net_d, dataloader, nz, device, samples_z=None):
             "FID": fid.compute().item(),
             "KID": kid.compute()[0].item(),
         }
-
+        print(metrics)
         # Create samples
         if samples_z is not None:
             samples = net_g(samples_z)
@@ -202,7 +202,7 @@ def evaluate(net_g, net_d, dataloader, nz, device, samples_z=None):
 
     return metrics if samples_z is None else (metrics, samples)
 
-def evaluate_conditional(net_g, net_d, dataloader, nz, device, samples_z=None):
+def evaluate_conditional(net_g, net_d, dataloader, nz, device, samples_z=None, samples_c=None):
     r"""
     Evaluates model and logs metrics.
     Attributes:
@@ -220,10 +220,11 @@ def evaluate_conditional(net_g, net_d, dataloader, nz, device, samples_z=None):
     with torch.no_grad():
 
         # Initialize metrics
-        is_, fid, kid, fake_imgs, real_imgs, loss_gs, loss_ds, real_preds, fake_preds = (
+        is_, fid, kid, fake_imgs, real_imgs, classes_list, loss_gs, loss_ds, real_preds, fake_preds = (
             IS().to(device),
             FID().to(device),
             KID().to(device),
+            [],
             [],
             [],
             [],
@@ -235,7 +236,7 @@ def evaluate_conditional(net_g, net_d, dataloader, nz, device, samples_z=None):
         for data, classes in tqdm(dataloader, desc="Evaluating Model"):
             
             # Compute losses and save intermediate outputs
-            reals, z = prepare_data_for_gan(data, nz, device)
+            reals, z, classes = prepare_data_for_gan(data, nz, device, classes)
             loss_d, fakes, real_pred, fake_pred = compute_loss_d_conditional(
                 net_g,
                 net_d,
@@ -261,6 +262,7 @@ def evaluate_conditional(net_g, net_d, dataloader, nz, device, samples_z=None):
             fakes = prepare_data_for_inception(fakes, device)
             fake_imgs.append(fakes)
             real_imgs.append(reals)
+            classes_list.append(classes)
             is_.update(fakes)
 
             fid.update(reals, real=True)
@@ -271,7 +273,7 @@ def evaluate_conditional(net_g, net_d, dataloader, nz, device, samples_z=None):
 
         # Process metrics
         IS2 = inception_score(torch.cat(fake_imgs))
-        BCIS, WCIS = conditional_inception_score(torch.cat(fake_imgs))
+        BCIS, WCIS = conditional_inception_score(torch.cat(fake_imgs), torch.cat(classes_list))
         metrics = {
             "L(G)": torch.stack(loss_gs).mean().item(),
             "L(D)": torch.stack(loss_ds).mean().item(),
@@ -287,7 +289,7 @@ def evaluate_conditional(net_g, net_d, dataloader, nz, device, samples_z=None):
         print(metrics)
         # Create samples
         if samples_z is not None:
-            samples = net_g(samples_z)
+            samples = net_g(samples_z, samples_c)
             samples = F.interpolate(samples, 256).cpu()
             samples = vutils.make_grid(samples, nrow=6, padding=4, normalize=True)
 
@@ -343,7 +345,8 @@ class Trainer:
         self.step = 0
 
         # Setup checkpointing, evaluation and logging
-        self.fixed_z = torch.randn((36, nz), device=device)
+        self.fixed_z = torch.randn((120, nz), device=device)
+        self.fixed_c = torch.arange(0,120, dtype=torch.int64, device=device)
         self.logger = tbx.SummaryWriter(log_dir)
         self.ckpt_dir = ckpt_dir
 
@@ -552,6 +555,7 @@ class Trainer:
                             self.nz,
                             self.device,
                             samples_z=self.fixed_z,
+                            samples_c=self.fixed_c
                         )
                     )
 

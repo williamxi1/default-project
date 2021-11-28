@@ -69,7 +69,7 @@ class ConditionalGenerator32(nn.Module):
 
     def forward(self, x, c):
         c_emb = self.embed(c)
-        x = torch.cat(x, c_emb)
+        x = torch.cat((x, c_emb), dim=1)
         h = self.l1(x)
         h = self.unfatten(h)
         h = self.block2(h)
@@ -133,7 +133,7 @@ class ConditionalDiscriminator32(nn.Module):
     def forward(self, x, c):
         c_emb = self.embed(c)
         c_emb = c_emb.reshape((c.shape[0],1,32,32))
-        h = torch.cat(x, c_emb, dim = 1)
+        h = torch.cat((x, c_emb), dim = 1)
         h = self.block1(h)
         h = self.block2(h)
         h = self.block3(h)
