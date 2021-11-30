@@ -54,8 +54,7 @@ class ConditionalGenerator32(nn.Module):
 
     def __init__(self, nz=128, nc=10, ngf=256, bottom_width=4):
         super().__init__()
-        self.nc = nc
-
+        self.embed = nn.Embedding(nc, nz)
         self.l1 = nn.Linear(2*nz, (bottom_width ** 2) * ngf)
         self.unfatten = nn.Unflatten(1, (ngf, bottom_width, bottom_width))
         self.block2 = GBlock(ngf, ngf, upsample=True)
@@ -64,13 +63,13 @@ class ConditionalGenerator32(nn.Module):
         self.b5 = nn.BatchNorm2d(ngf)
         self.c5 = nn.Conv2d(ngf, 3, 3, 1, padding=1)
         self.activation = nn.ReLU(True)
-        
+
         nn.init.xavier_uniform_(self.l1.weight.data, 1.0)
         nn.init.xavier_uniform_(self.c5.weight.data, 1.0)
 
     def forward(self, x, c):
-        c_onehot = F.one_hot(c, num_classes=self.nc)
-        x = torch.cat((x, c), dim=1)
+        c_emb = self.embed(c)
+        x = torch.cat((x, c_emb), dim=1)
         h = self.l1(x)
         h = self.unfatten(h)
         h = self.block2(h)
@@ -121,25 +120,27 @@ class ConditionalDiscriminator32(nn.Module):
 
     def __init__(self, ndf=128, nc=10):
         super().__init__()
+        self.embed = nn.Embedding(nc, 32*32)
         self.block1 = DBlockOptimized(3 +1, ndf)
         self.block2 = DBlock(ndf, ndf, downsample=True)
         self.block3 = DBlock(ndf, ndf, downsample=False)
         self.block4 = DBlock(ndf, ndf, downsample=False)
         self.l5 = SNLinear(ndf, 1)
         self.activation = nn.ReLU(True)
-        self.nc = nc
+
         nn.init.xavier_uniform_(self.l5.weight.data, 1.0)
 
     def forward(self, x, c):
-        h=x
+        c_emb = self.embed(c)
+        c_emb = c_emb.reshape((c.shape[0],1,32,32))
+        h = torch.cat((x, c_emb), dim = 1)
         h = self.block1(h)
         h = self.block2(h)
         h = self.block3(h)
         h = self.block4(h)
         h = self.activation(h)
         h = torch.sum(h, dim=(2, 3))
-        c_onehot = F.one_hot(c, num_classes=self.nc)
-        y = self.l5(torch.cat(h, c_onehot), dim=1)
+        y = self.l5(h)
         return y
 
 
