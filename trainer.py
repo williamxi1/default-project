@@ -25,7 +25,7 @@ def prepare_data_for_inception(x, device):
     return x.to(device).to(torch.uint8)
 
 
-def prepare_data_for_gan(x, nz, device, classes):
+def prepare_data_for_gan(x, nz, device, classes=None):
     r"""
     Helper function to prepare inputs for model.
     """
@@ -33,7 +33,7 @@ def prepare_data_for_gan(x, nz, device, classes):
     return (
         x.to(device),
         torch.randn((x.size(0), nz)).to(device),
-        classes.to(device),
+        classes.to(device) if classes is not None else None,
     )
 
 
@@ -155,7 +155,7 @@ def evaluate(net_g, net_d, dataloader, nz, device, samples_z=None):
         for data, _ in tqdm(dataloader, desc="Evaluating Model"):
 
             # Compute losses and save intermediate outputs
-            reals, z = prepare_data_for_gan(data, nz, device)
+            reals, z, _ = prepare_data_for_gan(data, nz, device)
             loss_d, fakes, real_pred, fake_pred = compute_loss_d(
                 net_g,
                 net_d,
@@ -220,10 +220,12 @@ def evaluate_conditional(net_g, net_d, dataloader, nz, device, samples_z=None, s
     with torch.no_grad():
 
         # Initialize metrics
-        is_, fid, kid, myis_, loss_gs, loss_ds, real_preds, fake_preds = (
+        is_, realis_, fid, kid, myis_, myisreal_, loss_gs, loss_ds, real_preds, fake_preds = (
+            IS().to(device),
             IS().to(device),
             FID().to(device),
             KID().to(device),
+            inception_score(),
             inception_score(),
             [],
             [],
@@ -259,7 +261,9 @@ def evaluate_conditional(net_g, net_d, dataloader, nz, device, samples_z=None, s
             reals = prepare_data_for_inception(reals, device)
             fakes = prepare_data_for_inception(fakes, device)
             is_.update(fakes)
+            realis_.update(reals)
             myis_.update(fakes, classes)
+            myisreal_.update(reals, classes)
 
             fid.update(reals, real=True)
             fid.update(fakes, real=False)
@@ -272,6 +276,8 @@ def evaluate_conditional(net_g, net_d, dataloader, nz, device, samples_z=None, s
         #BCIS, WCIS = conditional_inception_score(torch.cat(fake_imgs), torch.cat(classes_list))
         IS2 = myis_.compute()[0].item()
         BCIS, WCIS = myis_.compute_conditional()
+        realIS2 = myisreal_.compute()[0].item()
+        realBCIS, realWCIS = myisreal_.compute_conditional()
         metrics = {
             "L(G)": torch.stack(loss_gs).mean().item(),
             "L(D)": torch.stack(loss_ds).mean().item(),
@@ -281,6 +287,10 @@ def evaluate_conditional(net_g, net_d, dataloader, nz, device, samples_z=None, s
             "IS2": IS2,
             "BCIS": BCIS,
             "WCIS": WCIS,
+            "IS_REAL": realis_.compute()[0].item(),
+            "IS2_REAL": realIS2,
+            "REAL_BCIS": realBCIS,
+            "REAL_WCIS": realWCIS,
             "FID": fid.compute().item(),
             "KID": kid.compute()[0].item(),
         }
@@ -450,7 +460,7 @@ class Trainer:
             for data, _ in pbar:
 
                 # Training step
-                reals, z = prepare_data_for_gan(data, self.nz, self.device)
+                reals, z, _ = prepare_data_for_gan(data, self.nz, self.device)
                 
                 loss_d = self._train_step_d(reals, z)
                 if self.step % repeat_d == 0:

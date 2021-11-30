@@ -213,10 +213,11 @@ class inception_score():
         N = len(classes)
         num_classes = len(set(classes))
         classes = torch.FloatTensor(classes)
+#        print(classes)
         # random permute the features
-        idx = torch.randperm(features.shape[0])
-        features = features[idx]
-        classes = classes[idx]
+#        idx = torch.randperm(features.shape[0])
+#        features = features[idx]
+#        classes = classes[idx]
     
 
         # calculate probs and logits

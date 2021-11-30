@@ -182,7 +182,7 @@ def train(args):
     #revert to old
     transform = transforms.Compose(
         [
-            transforms.Grayscale(3),
+            #transforms.Grayscale(3),
             transforms.Resize(args.im_size),
             transforms.CenterCrop(args.im_size),
             transforms.ToTensor(),
@@ -191,11 +191,11 @@ def train(args):
         ]
     )
 
-    mnist = datasets.MNIST(root= "./Data", download = True, transform = transform)
+    CIFAR = datasets.CIFAR10(root= "./Data", download = True, transform = transform)
 
     eval_dataset, train_dataset = torch.utils.data.random_split(
-        mnist,
-        [eval_size, len(mnist) - eval_size],
+        CIFAR,
+        [eval_size, len(CIFAR) - eval_size],
     )
 
     eval_dataloader = torch.utils.data.DataLoader(
