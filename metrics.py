@@ -1,3 +1,4 @@
+
 from typing import Any, Callable, List, Optional, Tuple, Union
 
 import torch
@@ -160,9 +161,8 @@ class inception_score():
         compute_on_step: bool = False,
         dist_sync_on_step: bool = False
     ) -> None:
-
-        self.inception = NoTrainInceptionV3(name="inception-v3-compat", features_list=[str(feature)])
-
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.inception = NoTrainInceptionV3(name="inception-v3-compat", features_list=[str(feature)]).to(device)
         self.splits = splits
         self.features = []
         self.classes = []
@@ -172,6 +172,9 @@ class inception_score():
         Args:
             imgs: tensor with images feed to the feature extractor
         """
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        imgs = imgs.to(device)
+        #print("IMAGE  DEVICE:", imgs.get_device())
         features = self.inception(imgs)
         self.features.append(features)
         if classes is not None:
@@ -201,16 +204,19 @@ class inception_score():
         return kl.mean(), kl.std()
     
     def compute_conditional(self):
-        N = len(self.features)
-        print(f"Eval Dataset Size: {N}")
+  #      print(self.classes[0:20])
+ #       print(f"Eval Dataset Size: {N}")
 
         features = dim_zero_cat(self.features)
-        classes = torch.from_numpy(self.classes)
+#        print(features[0])
+        classes = [c.item() for c in self.classes]
+        N = len(classes)
+        num_classes = len(set(classes))
+        classes = torch.FloatTensor(classes)
         # random permute the features
         idx = torch.randperm(features.shape[0])
         features = features[idx]
         classes = classes[idx]
-        num_classes = len(set(classes))
     
 
         # calculate probs and logits
@@ -225,10 +231,17 @@ class inception_score():
        
         for c in range(num_classes):
             where_c = (classes == c)
-            probs_c = features[where_c].softmax(dim=1)
+            probs_c = prob[where_c]
             num_c = torch.sum(where_c)
+
+     #       import time
+    #        print(where_c)
+   #         print(probs_c, probs_c.shape)
+  #          print(torch.max(torch.mean(probs_c, dim = 0)), torch.mean(probs_c, dim=0))
+ #           time.sleep(20)
+            
             class_cnt.append(num_c.item())
-            pyc.append(np.mean(probs_c,axis=0))
+            pyc.append(torch.mean(probs_c,dim=0))
             prob_c.append(probs_c)
         
             
@@ -237,7 +250,13 @@ class inception_score():
         for c in range(num_classes):
             p_class = class_cnt[c]/N
            # KL_PYC_PY = entropy(pyc[c], mean_prob)
-            KL_PYC_PY = (pyc[c] * (pyc[c].log() - mean_prob.log())).mean()
+            KL_PYC_PY = (pyc[c] * (pyc[c].log() - mean_prob.log())).sum()
+#            print(KL_PYC_PY, entropy(pyc[c].cpu(), mean_prob.cpu()), p_class, class_cnt[c], N)
+           # print(f"class {c}: {pyc[c]}")
+           # print(f"mean prob: {mean_prob}")
+           # import time
+#            time.sleep(3)
+#            print(KL_PYC_PY)
             BCIS += p_class * KL_PYC_PY
 
             KL_PYX_PYC = 0
@@ -245,12 +264,12 @@ class inception_score():
             num_c = class_cnt[c]
             for i in range(num_c):
                 #KL_PYX_PYC += 1/num_c  * entropy(probs_c[i,:], pyc[c])
-                KL_PYX_PYC += (probs_c[c] * (probs_c[c].log() - pyc[c].log())).mean()
+                KL_PYX_PYC += 1/num_c * (probs_c[i] * (probs_c[i].log() - pyc[c].log())).sum()
             WCIS += p_class * KL_PYX_PYC
 
-        BCIS = np.exp(BCIS)
-        WCIS = np.exp(WCIS)
-        return BCIS, WCIS
+        BCIS = torch.exp(BCIS)
+        WCIS = torch.exp(WCIS)
+        return BCIS.item(), WCIS.item()
 
 
 class MatrixSquareRoot(Function):

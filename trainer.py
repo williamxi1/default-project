@@ -9,7 +9,7 @@ import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.utils as vutils
 from torchmetrics import IS, FID, KID
-from metrics import inception_score, conditional_inception_score
+from metrics import inception_score
 
 
 def prepare_data_for_inception(x, device):
@@ -220,13 +220,11 @@ def evaluate_conditional(net_g, net_d, dataloader, nz, device, samples_z=None, s
     with torch.no_grad():
 
         # Initialize metrics
-        is_, fid, kid, fake_imgs, real_imgs, classes_list, loss_gs, loss_ds, real_preds, fake_preds = (
+        is_, fid, kid, myis_, loss_gs, loss_ds, real_preds, fake_preds = (
             IS().to(device),
             FID().to(device),
             KID().to(device),
-            [],
-            [],
-            [],
+            inception_score(),
             [],
             [],
             [],
@@ -260,10 +258,8 @@ def evaluate_conditional(net_g, net_d, dataloader, nz, device, samples_z=None, s
             fake_preds.append(compute_prob(fake_pred))
             reals = prepare_data_for_inception(reals, device)
             fakes = prepare_data_for_inception(fakes, device)
-            fake_imgs.append(fakes)
-            real_imgs.append(reals)
-            classes_list.append(classes)
             is_.update(fakes)
+            myis_.update(fakes, classes)
 
             fid.update(reals, real=True)
             fid.update(fakes, real=False)
@@ -272,8 +268,10 @@ def evaluate_conditional(net_g, net_d, dataloader, nz, device, samples_z=None, s
 
 
         # Process metrics
-        IS2 = inception_score(torch.cat(fake_imgs))
-        BCIS, WCIS = conditional_inception_score(torch.cat(fake_imgs), torch.cat(classes_list))
+        #IS2 = inception_score(torch.cat(fake_imgs))
+        #BCIS, WCIS = conditional_inception_score(torch.cat(fake_imgs), torch.cat(classes_list))
+        IS2 = myis_.compute()[0].item()
+        BCIS, WCIS = myis_.compute_conditional()
         metrics = {
             "L(G)": torch.stack(loss_gs).mean().item(),
             "L(D)": torch.stack(loss_ds).mean().item(),
@@ -345,8 +343,8 @@ class Trainer:
         self.step = 0
 
         # Setup checkpointing, evaluation and logging
-        self.fixed_z = torch.randn((120, nz), device=device)
-        self.fixed_c = torch.arange(0,120, dtype=torch.int64, device=device)
+        self.fixed_z = torch.randn((100, nz), device=device)
+        self.fixed_c = torch.arange(0,10, dtype=torch.int64, device=device).repeat(10)
         self.logger = tbx.SummaryWriter(log_dir)
         self.ckpt_dir = ckpt_dir
 

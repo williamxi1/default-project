@@ -191,7 +191,7 @@ def train(args):
         ]
     )
 
-    mnist = datasets.MNIST(root= "/Data", download = True, transform = transform)
+    mnist = datasets.MNIST(root= "./Data", download = True, transform = transform)
 
     eval_dataset, train_dataset = torch.utils.data.random_split(
         mnist,

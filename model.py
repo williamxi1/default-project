@@ -52,7 +52,7 @@ class ConditionalGenerator32(nn.Module):
         bottom_width (int): Starting width for upsampling generator output to an image.
     """
 
-    def __init__(self, nz=128, nc=120, ngf=256, bottom_width=4):
+    def __init__(self, nz=128, nc=10, ngf=256, bottom_width=4):
         super().__init__()
         self.embed = nn.Embedding(nc, nz)
         self.l1 = nn.Linear(2*nz, (bottom_width ** 2) * ngf)
@@ -118,7 +118,7 @@ class ConditionalDiscriminator32(nn.Module):
         ndf (int): Variable controlling discriminator feature map sizes.
     """
 
-    def __init__(self, ndf=128, nc=120):
+    def __init__(self, ndf=128, nc=10):
         super().__init__()
         self.embed = nn.Embedding(nc, 32*32)
         self.block1 = DBlockOptimized(3 +1, ndf)

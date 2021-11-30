@@ -11,8 +11,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.hub import load_state_dict_from_url
 
-from feature_extractor_base import FeatureExtractorBase
-from interpolate_compat_tensorflow import interpolate_bilinear_2d_like_tensorflow1x
+from inception_v3.feature_extractor_base import FeatureExtractorBase
+from inception_v3.interpolate_compat_tensorflow import interpolate_bilinear_2d_like_tensorflow1x
 
 def vassert(truecond, message):
     if not truecond:
@@ -426,7 +426,7 @@ class NoTrainInceptionV3(FeatureExtractorInceptionV3):
         self,
         name,
         features_list,
-        feature_extractor_weights_path,
+        feature_extractor_weights_path=None,
     ) -> None:
         super().__init__(name, features_list, feature_extractor_weights_path)
         # put into evaluation mode
