@@ -32,6 +32,12 @@ def parse_args():
         help="Use Conditional GAN",
     )
     parser.add_argument(
+        "--attention",
+        default=False,
+        action="store_true",
+        help="Use attention mechanisms",
+    )
+    parser.add_argument(
         "--out_dir",
         type=str,
         default=os.path.join(root_dir, "out"),
@@ -151,6 +157,9 @@ def train(args):
         if args.im_size == 32:
             net_g = ConditionalGenerator32()
             net_d = ConditionalDiscriminator32()
+        if args.im_size == 64:
+            net_g = ConditionalGenerator64(att=args.attention)
+            net_d = ConditionalDiscriminator64(att=args.attention)
     else:
         if args.im_size == 32:
             net_g = Generator32()
