@@ -164,8 +164,12 @@ def train(args):
             net_g = ConditionalGenerator32()
             net_d = ConditionalDiscriminator32()
         if args.im_size == 64:
-            net_g = ConditionalGenerator64(att=args.attention)
-            net_d = ConditionalDiscriminator64(att=args.attention)
+            if not args.batch_norm:
+                net_g = ConditionalGenerator64(att=args.attention)
+                net_d = ConditionalDiscriminator64(att=args.attention)
+            else:
+                net_g = ConditionalBNGenerator64(att=args.attention)
+                net_d = ConditionalBNDiscriminator64(att=args.attention)
     else:
         if args.im_size == 32:
             net_g = Generator32()
