@@ -188,7 +188,7 @@ class ConditionalGenerator64(nn.Module):
         bottom_width (int): Starting width for upsampling generator output to an image.
     """
 
-    def __init__(self, nz=128, nc = 10, ngf=1024, bottom_width=4, att=False):
+    def __init__(self, nz=128, nc = 120, ngf=1024, bottom_width=4, att=False):
         super().__init__()
 
         self.att = att
@@ -303,7 +303,7 @@ class ConditionalDiscriminator64(nn.Module):
         ndf (int): Variable controlling discriminator feature map sizes.
     """
 
-    def __init__(self, ndf=1024, nc=10, att=False):
+    def __init__(self, ndf=1024, nc=120, att=False):
         super().__init__()
 
         self.att = att
