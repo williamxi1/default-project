@@ -38,6 +38,12 @@ def parse_args():
         help="Use attention mechanisms",
     )
     parser.add_argument(
+        "--batch_norm",
+        default=False,
+        action="store_true",
+        help="Use batch normalization",
+    )
+    parser.add_argument(
         "--out_dir",
         type=str,
         default=os.path.join(root_dir, "out"),
