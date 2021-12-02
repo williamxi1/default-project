@@ -237,19 +237,25 @@ def evaluate_conditional(net_g, net_d, dataloader, nz, device, samples_z=None, s
             
             # Compute losses and save intermediate outputs
             reals, z, classes = prepare_data_for_gan(data, nz, device, classes)
+            real_classes = classes
+            fake_classes = classes
+            fake_classes_ohe = torch.eye(120)[fake_classes]
             loss_d, fakes, real_pred, fake_pred = compute_loss_d_conditional(
                 net_g,
                 net_d,
                 reals,
                 z,
-                classes,
+                real_classes,
+                fake_classes,
+                fake_classes_ohe,
                 hinge_loss_d,
             )
             loss_g, _, _ = compute_loss_g_conditional(
                 net_g,
                 net_d,
                 z,
-                classes,
+                fake_classes,
+                fake_classes_ohe,
                 hinge_loss_g,
             )
 
@@ -489,7 +495,7 @@ class Trainer:
                 if self.step > max_steps:
                     return
 
-    def _train_step_g_conditional(self, z, classes):
+    def _train_step_g_conditional(self, z, fake_classes, fake_classes_ohe):
         r"""
         Performs a generator training step.
         """
@@ -502,7 +508,8 @@ class Trainer:
                 self.net_g,
                 self.net_d,
                 z,
-                classes,
+                fake_classes,
+                fake_classes_ohe,
                 hinge_loss_g,
             )[0],
         )
