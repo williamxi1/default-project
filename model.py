@@ -348,7 +348,7 @@ class ResBlockGenerator(nn.Module):
 
 class ConditionalBNGenerator64(nn.Module):
     def __init__(self,z_dim =128,channels=3,ch = 64,n_classes = 120,leak = 0,att = False):
-        super(Generator64, self).__init__()
+        super(ConditionalBNGenerator64, self).__init__()
 
         self.ch = ch
         self.n_classes = n_classes
@@ -526,7 +526,7 @@ class OptimizedBlock(nn.Module):
 
 class ConditionalBNDiscriminator64(nn.Module):
     def __init__(self, channels=3,ch = 32,n_classes=0,leak =0,att = False):
-        super(Discriminator64, self).__init__()
+        super(ConditionalBNDiscriminator64, self).__init__()
         
         if leak >0:
             self.activation = nn.LeakyReLU(leak)
