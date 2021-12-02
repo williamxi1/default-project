@@ -9,7 +9,7 @@ import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.utils as vutils
 from torchmetrics import IS, FID, KID
-from metrics import inception_score
+from metrics import inception_score, frechet_inception_distance
 
 
 def prepare_data_for_inception(x, device):
@@ -220,13 +220,12 @@ def evaluate_conditional(net_g, net_d, dataloader, nz, device, samples_z=None, s
     with torch.no_grad():
 
         # Initialize metrics
-        is_, realis_, fid, kid, myis_, myisreal_, loss_gs, loss_ds, real_preds, fake_preds = (
-            IS().to(device),
+        is_, fid, kid, myis_, myfid_, loss_gs, loss_ds, real_preds, fake_preds = (
             IS().to(device),
             FID().to(device),
             KID().to(device),
             inception_score(),
-            inception_score(),
+            frechet_inception_distance(),
             [],
             [],
             [],
@@ -267,9 +266,9 @@ def evaluate_conditional(net_g, net_d, dataloader, nz, device, samples_z=None, s
             reals = prepare_data_for_inception(reals, device)
             fakes = prepare_data_for_inception(fakes, device)
             is_.update(fakes)
-            realis_.update(reals)
+            myfid_.update(reals, real=True, classes=classes)
+            myfid_.update(fakes, real=False)
             myis_.update(fakes, classes)
-            myisreal_.update(reals, classes)
 
             fid.update(reals, real=True)
             fid.update(fakes, real=False)
@@ -282,8 +281,9 @@ def evaluate_conditional(net_g, net_d, dataloader, nz, device, samples_z=None, s
         #BCIS, WCIS = conditional_inception_score(torch.cat(fake_imgs), torch.cat(classes_list))
         IS2 = myis_.compute()[0].item()
         BCIS, WCIS = myis_.compute_conditional()
-        realIS2 = myisreal_.compute()[0].item()
-        realBCIS, realWCIS = myisreal_.compute_conditional()
+
+        FID2 = myfid_.compute().item()
+        BCFID, WCFID =  myfid_.compute_conditional()
         metrics = {
             "L(G)": torch.stack(loss_gs).mean().item(),
             "L(D)": torch.stack(loss_ds).mean().item(),
@@ -293,10 +293,9 @@ def evaluate_conditional(net_g, net_d, dataloader, nz, device, samples_z=None, s
             "IS2": IS2,
             "BCIS": BCIS,
             "WCIS": WCIS,
-            "IS_REAL": realis_.compute()[0].item(),
-            "IS2_REAL": realIS2,
-            "REAL_BCIS": realBCIS,
-            "REAL_WCIS": realWCIS,
+            "FID2": FID2,
+            "BCFID": BCFID,
+            "WCFID": WCFID,
             "FID": fid.compute().item(),
             "KID": kid.compute()[0].item(),
         }
@@ -565,7 +564,7 @@ class Trainer:
                 fake_classes, fake_classes_ohe = self.sample_pseudo_labels(num_classes=120, batch_size=len(real_classes))
                 loss_d = self._train_step_d_conditional(reals, z, real_classes, fake_classes, fake_classes_ohe)
                 if self.step % repeat_d == 0:
-                    loss_g = self._train_step_g_conditional(z, fake_classes_ohe)
+                    loss_g = self._train_step_g_conditional(z, fake_classes, fake_classes_ohe)
 
                 pbar.set_description(
                     f"L(G):{loss_g.item():.2f}|L(D):{loss_d.item():.2f}|{self.step}/{max_steps}"

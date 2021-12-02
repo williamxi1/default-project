@@ -204,8 +204,9 @@ class frechet_inception_distance():
         self.higher_is_better = False
         self.real_features = []
         self.fake_features = []
+        self.classes = []
 
-    def update(self, imgs: Tensor, real: bool) -> None:  # type: ignore
+    def update(self, imgs: Tensor, real: bool, classes=None) -> None:  # type: ignore
         """Update the state with extracted features.
         Args:
             imgs: tensor with images feed to the feature extractor
@@ -217,6 +218,9 @@ class frechet_inception_distance():
             self.real_features.append(features)
         else:
             self.fake_features.append(features)
+
+        if classes is not None:
+            self.classes.extend(classes)
 
     def compute(self) -> Tensor:
         """Calculate FID score based on accumulated extracted features from the two distributions."""
@@ -261,6 +265,8 @@ class frechet_inception_distance():
 
          # computation is extremely sensitive so it needs to happen in double precision
         orig_dtype = real_features.dtype
+        real_features_mean_c = real_features_mean_c.double()
+        fake_features_mean_c = fake_features_mean_c.double()
         real_features = real_features.double()
         fake_features = fake_features.double()
 
@@ -272,9 +278,7 @@ class frechet_inception_distance():
 
         cov_real_class = 1.0 / (num_classes - 1) * diff_real_c.t().mm(diff_real_c)
         cov_fake_class = 1.0 / (num_classes - 1) * diff_fake_c.t().mm(diff_fake_c)
-        #
-        #cov_real  = 1.0 / (n - 1) * diff_real.t().mm(diff_real)
-        #cov_fake  = 1.0 / (n - 1) * diff_fake.t().mm(diff_fake)
+
 
 
 
