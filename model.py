@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from module import *
+from module import SNConv2d, SNLinear, GBlock, DBlock, DBlockOptimized
 
 import torch.nn.utils.spectral_norm as SpectralNorm
 
