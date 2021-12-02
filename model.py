@@ -8,52 +8,6 @@ from module import SNConv2d, SNLinear, GBlock, DBlock, DBlockOptimized
 
 import torch.nn.utils.spectral_norm as SpectralNorm
 
-def init_weight(m):
-    classname = m.__class__.__name__
-    if classname.find('Conv') != -1:
-        nn.init.orthogonal_(m.weight, gain=1)
-        if m.bias is not None:
-            m.bias.data.zero_()
-            
-    elif classname.find('Batch') != -1:
-        m.weight.data.normal_(1,0.02)
-        m.bias.data.zero_()
-    
-    elif classname.find('Linear') != -1:
-        nn.init.orthogonal_(m.weight, gain=1)
-        if m.bias is not None:
-            m.bias.data.zero_()
-    
-    elif classname.find('Embedding') != -1:
-        nn.init.orthogonal_(m.weight, gain=1)
-
-class Attention(nn.Module):
-    def __init__(self, channels):
-        super().__init__()
-        self.channels = channels
-        self.theta    = nn.utils.spectral_norm(
-                        nn.Conv2d(channels, channels//8, kernel_size=1, padding=0, bias=True)).apply(init_weight)
-        self.phi      = nn.utils.spectral_norm(
-                        nn.Conv2d(channels, channels//8, kernel_size=1, padding=0, bias=True)).apply(init_weight)
-        self.g        = nn.utils.spectral_norm(
-                        nn.Conv2d(channels, channels//2, kernel_size=1, padding=0, bias=True)).apply(init_weight)
-        self.o        = nn.utils.spectral_norm(
-                        nn.Conv2d(channels//2, channels, kernel_size=1, padding=0, bias=True)).apply(init_weight)
-        self.gamma    = nn.Parameter(torch.tensor(0.), requires_grad=True)
-        
-    def forward(self, inputs):
-        batch,c,h,w = inputs.size()
-        theta = self.theta(inputs) #->(*,c/8,h,w)
-        phi   = F.max_pool2d(self.phi(inputs), [2,2]) #->(*,c/8,h/2,w/2)
-        g     = F.max_pool2d(self.g(inputs), [2,2]) #->(*,c/2,h/2,w/2)
-        
-        theta = theta.view(batch, self.channels//8, -1) #->(*,c/8,h*w)
-        phi   = phi.view(batch, self.channels//8, -1) #->(*,c/8,h*w/4)
-        g     = g.view(batch, self.channels//2, -1) #->(*,c/2,h*w/4)
-        
-        beta = F.softmax(torch.bmm(theta.transpose(1,2), phi), -1) #->(*,h*w,h*w/4)
-        o    = self.o(torch.bmm(g, beta.transpose(1,2)).view(batch,self.channels//2,h,w)) #->(*,c,h,w)
-        return self.gamma*o + inputs
 
 class Generator32(nn.Module):
     r"""
@@ -275,6 +229,131 @@ class ConditionalGenerator64(nn.Module):
         y = torch.tanh(h)
         return y
 
+class Discriminator64(nn.Module):
+
+    r"""
+    ResNet backbone discriminator for SNGAN.
+    Attributes:
+        ndf (int): Variable controlling discriminator feature map sizes.
+    """
+
+    def __init__(self, ndf=1024):
+        super().__init__()
+
+        self.block1 = DBlockOptimized(3, ndf >> 4)
+        self.block2 = DBlock(ndf >> 4, ndf >> 3, downsample=True)
+        self.block3 = DBlock(ndf >> 3, ndf >> 2, downsample=True)
+        self.block4 = DBlock(ndf >> 2, ndf >> 1, downsample=True)
+        self.block5 = DBlock(ndf >> 1, ndf, downsample=True)
+        self.l6 = SNLinear(ndf, 1)
+        self.activation = nn.ReLU(True)
+
+        nn.init.xavier_uniform_(self.l6.weight.data, 1.0)
+
+    def forward(self, x):
+        h = x
+        h = self.block1(h)
+        h = self.block2(h)
+        h = self.block3(h)
+        h = self.block4(h)
+        h = self.block5(h)
+        h = self.activation(h)
+        h = torch.sum(h, dim=(2, 3))
+        y = self.l6(h)
+        return y
+
+class ConditionalDiscriminator64(nn.Module):
+
+    r"""
+    ResNet backbone discriminator for SNGAN.
+    Attributes:
+        ndf (int): Variable controlling discriminator feature map sizes.
+    """
+
+    def __init__(self, ndf=1024, nc=120, att=False):
+        super().__init__()
+
+        self.att = att
+        self.embed = nn.Embedding(nc, 64*64)
+        self.block1 = DBlockOptimized(3 + 1, ndf >> 4)
+        if att:
+            self.attention = Attention(ndf >> 4)
+        self.block2 = DBlock(ndf >> 4, ndf >> 3, downsample=True)
+        self.block3 = DBlock(ndf >> 3, ndf >> 2, downsample=True)
+        self.block4 = DBlock(ndf >> 2, ndf >> 1, downsample=True)
+        self.block5 = DBlock(ndf >> 1, ndf, downsample=True)
+        self.l6 = SNLinear(ndf, 1)
+        self.activation = nn.ReLU(True)
+
+        nn.init.xavier_uniform_(self.l6.weight.data, 1.0)
+
+    def forward(self, x, c):
+        c_emb = self.embed(c)
+        c_emb = c_emb.reshape((c.shape[0],1,64,64))
+        h = torch.cat((x, c_emb), dim = 1)
+        h = self.block1(h)
+        if self.att:
+            h = self.attention(h)
+        h = self.block2(h)
+        h = self.block3(h)
+        h = self.block4(h)
+        h = self.block5(h)
+        h = self.activation(h)
+        h = torch.sum(h, dim=(2, 3))
+        y = self.l6(h)
+        return y
+
+
+
+
+
+
+
+def init_weight(m):
+    classname = m.__class__.__name__
+    if classname.find('Conv') != -1:
+        nn.init.orthogonal_(m.weight, gain=1)
+        if m.bias is not None:
+            m.bias.data.zero_()
+            
+    elif classname.find('Batch') != -1:
+        m.weight.data.normal_(1,0.02)
+        m.bias.data.zero_()
+    
+    elif classname.find('Linear') != -1:
+        nn.init.orthogonal_(m.weight, gain=1)
+        if m.bias is not None:
+            m.bias.data.zero_()
+    
+    elif classname.find('Embedding') != -1:
+        nn.init.orthogonal_(m.weight, gain=1)
+class Attention(nn.Module):
+    def __init__(self, channels):
+        super().__init__()
+        self.channels = channels
+        self.theta    = nn.utils.spectral_norm(
+                        nn.Conv2d(channels, channels//8, kernel_size=1, padding=0, bias=True)).apply(init_weight)
+        self.phi      = nn.utils.spectral_norm(
+                        nn.Conv2d(channels, channels//8, kernel_size=1, padding=0, bias=True)).apply(init_weight)
+        self.g        = nn.utils.spectral_norm(
+                        nn.Conv2d(channels, channels//2, kernel_size=1, padding=0, bias=True)).apply(init_weight)
+        self.o        = nn.utils.spectral_norm(
+                        nn.Conv2d(channels//2, channels, kernel_size=1, padding=0, bias=True)).apply(init_weight)
+        self.gamma    = nn.Parameter(torch.tensor(0.), requires_grad=True)
+        
+    def forward(self, inputs):
+        batch,c,h,w = inputs.size()
+        theta = self.theta(inputs) #->(*,c/8,h,w)
+        phi   = F.max_pool2d(self.phi(inputs), [2,2]) #->(*,c/8,h/2,w/2)
+        g     = F.max_pool2d(self.g(inputs), [2,2]) #->(*,c/2,h/2,w/2)
+        
+        theta = theta.view(batch, self.channels//8, -1) #->(*,c/8,h*w)
+        phi   = phi.view(batch, self.channels//8, -1) #->(*,c/8,h*w/4)
+        g     = g.view(batch, self.channels//2, -1) #->(*,c/2,h*w/4)
+        
+        beta = F.softmax(torch.bmm(theta.transpose(1,2), phi), -1) #->(*,h*w,h*w/4)
+        o    = self.o(torch.bmm(g, beta.transpose(1,2)).view(batch,self.channels//2,h,w)) #->(*,c,h,w)
+        return self.gamma*o + inputs
 class ConditionalNorm(nn.Module):
     def __init__(self, in_channel, n_condition):
         super().__init__()
@@ -347,6 +426,7 @@ class ResBlockGenerator(nn.Module):
         out_res = self.shortcut(x)
         return out + out_res
 
+
 class ConditionalBNGenerator64(nn.Module):
     def __init__(self,z_dim =128,channels=3,ch = 64,n_classes = 120,leak = 0,att = False):
         super(ConditionalBNGenerator64, self).__init__()
@@ -382,79 +462,6 @@ class ConditionalBNGenerator64(nn.Module):
         h = self.activation(h)
         h = self.final(h)
         return nn.Tanh()(h)
-
-
-class Discriminator64(nn.Module):
-    r"""
-    ResNet backbone discriminator for SNGAN.
-    Attributes:
-        ndf (int): Variable controlling discriminator feature map sizes.
-    """
-
-    def __init__(self, ndf=1024):
-        super().__init__()
-
-        self.block1 = DBlockOptimized(3, ndf >> 4)
-        self.block2 = DBlock(ndf >> 4, ndf >> 3, downsample=True)
-        self.block3 = DBlock(ndf >> 3, ndf >> 2, downsample=True)
-        self.block4 = DBlock(ndf >> 2, ndf >> 1, downsample=True)
-        self.block5 = DBlock(ndf >> 1, ndf, downsample=True)
-        self.l6 = SNLinear(ndf, 1)
-        self.activation = nn.ReLU(True)
-
-        nn.init.xavier_uniform_(self.l6.weight.data, 1.0)
-
-    def forward(self, x):
-        h = x
-        h = self.block1(h)
-        h = self.block2(h)
-        h = self.block3(h)
-        h = self.block4(h)
-        h = self.block5(h)
-        h = self.activation(h)
-        h = torch.sum(h, dim=(2, 3))
-        y = self.l6(h)
-        return y
-
-class ConditionalDiscriminator64(nn.Module):
-    r"""
-    ResNet backbone discriminator for SNGAN.
-    Attributes:
-        ndf (int): Variable controlling discriminator feature map sizes.
-    """
-
-    def __init__(self, ndf=1024, nc=120, att=False):
-        super().__init__()
-
-        self.att = att
-        self.embed = nn.Embedding(nc, 64*64)
-        self.block1 = DBlockOptimized(3 + 1, ndf >> 4)
-        if att:
-            self.attention = Attention(ndf >> 4)
-        self.block2 = DBlock(ndf >> 4, ndf >> 3, downsample=True)
-        self.block3 = DBlock(ndf >> 3, ndf >> 2, downsample=True)
-        self.block4 = DBlock(ndf >> 2, ndf >> 1, downsample=True)
-        self.block5 = DBlock(ndf >> 1, ndf, downsample=True)
-        self.l6 = SNLinear(ndf, 1)
-        self.activation = nn.ReLU(True)
-
-        nn.init.xavier_uniform_(self.l6.weight.data, 1.0)
-
-    def forward(self, x, c):
-        c_emb = self.embed(c)
-        c_emb = c_emb.reshape((c.shape[0],1,64,64))
-        h = torch.cat((x, c_emb), dim = 1)
-        h = self.block1(h)
-        if self.att:
-            h = self.attention(h)
-        h = self.block2(h)
-        h = self.block3(h)
-        h = self.block4(h)
-        h = self.block5(h)
-        h = self.activation(h)
-        h = torch.sum(h, dim=(2, 3))
-        y = self.l6(h)
-        return y
 
 
 class ResBlockDiscriminator(nn.Module):
@@ -523,7 +530,6 @@ class OptimizedBlock(nn.Module):
         )
     def forward(self, x):
         return self.model(x) + self.bypass(x)
-
 
 class ConditionalBNDiscriminator64(nn.Module):
     def __init__(self, channels=3,ch = 32,n_classes=120,leak =0,att = False):

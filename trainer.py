@@ -73,13 +73,13 @@ def compute_loss_g(net_g, net_d, z, loss_func_g):
     return loss_g, fakes, fake_preds
 
 
-def compute_loss_g_conditional(net_g, net_d, z, classes, loss_func_g):
+def compute_loss_g_conditional(net_g, net_d, z, fake_classes, fake_classes_ohe, loss_func_g):
     r"""
     General implementation to compute generator loss.
     """
 
-    fakes = net_g(z, classes)
-    fake_preds = net_d(fakes, classes).view(-1)
+    fakes = net_g(z, fake_classes_ohe)
+    fake_preds = net_d(fakes, fake_classes).view(-1)
     loss_g = loss_func_g(fake_preds)
 
     return loss_g, fakes, fake_preds
@@ -97,14 +97,14 @@ def compute_loss_d(net_g, net_d, reals, z, loss_func_d):
 
     return loss_d, fakes, real_preds, fake_preds
 
-def compute_loss_d_conditional(net_g, net_d, reals, z, classes, loss_func_d):
+def compute_loss_d_conditional(net_g, net_d, reals, z, real_classes, fake_classes, fake_classes_ohe, loss_func_d):
     r"""
     General implementation to compute discriminator loss.
     """
 
-    real_preds = net_d(reals, classes).view(-1)
-    fakes = net_g(z, classes).detach()
-    fake_preds = net_d(fakes, classes).view(-1)
+    real_preds = net_d(reals, real_classes).view(-1)
+    fakes = net_g(z, fake_classes_ohe).detach()
+    fake_preds = net_d(fakes, fake_classes).view(-1)
     loss_d = loss_func_d(real_preds, fake_preds)
 
     return loss_d, fakes, real_preds, fake_preds
@@ -507,7 +507,7 @@ class Trainer:
             )[0],
         )
 
-    def _train_step_d_conditional(self, reals, z, classes):
+    def _train_step_d_conditional(self, reals, z, real_classes, fake_classes, fake_classes_ohe):
         r"""
         Performs a discriminator training step.
         """
@@ -521,10 +521,19 @@ class Trainer:
                 self.net_d,
                 reals,
                 z,
-                classes,
+                real_classes,
+                fake_classes,
+                fake_classes_ohe,
                 hinge_loss_d,
             )[0],
         )
+
+
+    def sample_pseudo_labels(self, num_classes, batch_size):
+        y =  torch.randint(low=0, high=num_classes, size=(batch_size,)).to(self.device,non_blocking=True)
+        y_ohe = torch.eye(num_classes)[y].to(self.device,non_blocking=True)
+        y = y.type(torch.long)
+        return y,y_ohe
 
     def train_conditional(self, max_steps, repeat_d, eval_every, ckpt_every):
         r"""
@@ -544,11 +553,12 @@ class Trainer:
             for data, classes in pbar:
 
                 # Training step
-                reals, z, classes = prepare_data_for_gan(data, self.nz, self.device, classes)
+                reals, z, real_classes = prepare_data_for_gan(data, self.nz, self.device, classes)
                 
-                loss_d = self._train_step_d_conditional(reals, z, classes)
+                fake_classes, fake_classes_ohe = self.sample_pseudo_labels(num_classes=120, batch_size=len(real_classes))
+                loss_d = self._train_step_d_conditional(reals, z, real_classes, fake_classes, fake_classes_ohe)
                 if self.step % repeat_d == 0:
-                    loss_g = self._train_step_g_conditional(z, classes)
+                    loss_g = self._train_step_g_conditional(z, fake_classes_ohe)
 
                 pbar.set_description(
                     f"L(G):{loss_g.item():.2f}|L(D):{loss_d.item():.2f}|{self.step}/{max_steps}"
