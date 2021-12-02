@@ -3,9 +3,10 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.nn.utils.spectral_norm as SpectralNorm
 
 from module import *
+
+import torch.nn.utils.spectral_norm as SpectralNorm
 
 def init_weight(m):
     classname = m.__class__.__name__
