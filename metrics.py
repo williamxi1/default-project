@@ -15,138 +15,6 @@ import numpy as np
 import scipy
 from scipy.stats import entropy
 from util import dim_zero_cat
-# #https://github.com/sbarratt/inception-score-pytorch/blob/master/inception_score.py
-# def inception_score(imgs, cuda=True, batch_size=64, resize=False, splits=1):
-#     """Computes the inception score of the generated images imgs
-#     imgs -- Torch dataset of (3xHxW) numpy images normalized in the range [-1, 1]
-#     cuda -- whether or not to run on GPU
-#     batch_size -- batch size for feeding into Inception v3
-#     splits -- number of splits
-#     """
-#     N = imgs.shape[0]
-#     print(f"Eval Dataset Size: {N}")
-#     assert batch_size > 0
-#     assert N > batch_size
-
-#     # Set up dtype
-#     if cuda:
-#         dtype = torch.cuda.FloatTensor
-#     else:
-#         if torch.cuda.is_available():
-#             print("WARNING: You have a CUDA device, so you should probably set cuda=True")
-#         dtype = torch.FloatTensor
-
-#     # Load inception model
-#     inception_model = inception_v3(pretrained=True, transform_input=False).type(dtype)
-#     inception_model.eval()
-#     up = nn.Upsample(size=(299, 299), mode='bilinear').type(dtype)
-#     def get_pred(x):
-#         if resize:
-#             x = up(x)
-#         x = inception_model(x)
-#         return F.softmax(x).data.cpu().numpy()
-
-#     # Get predictions
-#     preds = np.zeros((N, 1000))
-#     for i in range(N//batch_size+ 1):
-#         batch_size_i = (N % batch_size) if i == N//batch_size else batch_size
-#         img_batch= imgs[i*batch_size:i*batch_size + batch_size_i]
-#         img_batch = img_batch.type(dtype)
-
-#         #MAYBE REMOVE THIS LINE
-#         img_batchv = Variable(img_batch)
-#         preds[i*batch_size:i*batch_size + batch_size_i] = get_pred(img_batchv)
-
-#     # Now compute the mean kl-div
-#     py = np.mean(preds, axis=0)
-#     scores = []
-#     for i in range(N):
-#             pyx = preds[i, :]
-#             scores.append(entropy(pyx, py))
-#     _IS = np.exp(np.mean(scores))
-#     return _IS
-
-# def conditional_inception_score(imgs, pred_classes, cuda=True, batch_size=64, resize=False, splits=1):
-
-#     """Computes the conditional inception score of the generated images imgs
-#     imgs -- Torch dataset of (3xHxW) numpy images normalized in the range [-1, 1]
-#     classes -- List of classes of each image 
-#     cuda -- whether or not to run on GPU
-#     batch_size -- batch size for feeding into Inception v3
-#     splits -- number of splits
-
-#     returns the between-class inception score (BCIS) and the within-class inception score (WCIS)
-#     """
-#     N = imgs.shape[0]
-#     print(f"Eval Dataset Size: {N}")
-
-#     num_classes = len(set(pred_classes))
-    
-#     assert batch_size > 0
-#     assert N > batch_size
-
-#     # Set up dtype
-#     if cuda:
-#         dtype = torch.cuda.FloatTensor
-#     else:
-#         if torch.cuda.is_available():
-#             print("WARNING: You have a CUDA device, so you should probably set cuda=True")
-#         dtype = torch.FloatTensor
-
-#     # Load inception model
-#     inception_model = inception_v3(pretrained=True, transform_input=False).type(dtype)
-#     inception_model.eval();
-#     up = nn.Upsample(size=(299, 299), mode='bilinear').type(dtype)
-#     def get_pred(x):
-#         if resize:
-#             x = up(x)
-#         x = inception_model(x)
-#         return F.softmax(x).data.cpu().numpy()
-
-#     # Get predictions
-#     preds = np.zeros((N, 1000))
-
-#     for i in range(N//batch_size+ 1):
-#         batch_size_i = (N % batch_size) if i == N//batch_size else batch_size
-#         img_batch = imgs[i*batch_size:i*batch_size + batch_size_i]
-#         img_batch = img_batch.type(dtype)
-
-#         #MAYBE REMOVE THIS LINE
-#         img_batchv = Variable(img_batch)
-
-#         preds[i*batch_size:i*batch_size + batch_size_i] = get_pred(img_batchv)
-
-#     # Now compute the mean kl-div
-#     py = np.mean(preds, axis=0)
-#     pyc = []
-#     class_cnt = []
-#     for c in range(num_classes):
-#         where_c = (pred_classes == c)
-#         preds_c = preds[where_c]
-#         num_c = torch.sum(where_c)
-#         class_cnt.append(num_c.item())
-#         pyc.append(np.mean(preds_c,axis=0))
-    
-#     assert np.sum(class_cnt) == N
-
-#     BCIS = 0
-#     WCIS = 0
-#     for c in range(num_classes):
-#         p_class = class_cnt[c]/N
-#         KL_PYC_PY = entropy(pyc[c], py)
-#         BCIS += p_class * KL_PYC_PY
-
-#         KL_PYX_PYC = 0
-#         where_c = (pred_classes == c)
-#         preds_c = preds[where_c]
-#         num_c = torch.sum(where_c)
-
-#         for i in range(num_c):
-#             KL_PYX_PYC += 1/num_c  * entropy(preds_c[i,:], pyc[c])
-#         WCIS += p_class * KL_PYX_PYC
-#     BCIS = np.exp(BCIS)
-#     WCIS = np.exp(WCIS)
-#     return BCIS, WCIS
 
 class inception_score():
     r"""
@@ -213,11 +81,7 @@ class inception_score():
         N = len(classes)
         num_classes = len(set(classes))
         classes = torch.FloatTensor(classes)
-#        print(classes)
-        # random permute the features
-#        idx = torch.randperm(features.shape[0])
-#        features = features[idx]
-#        classes = classes[idx]
+
     
 
         # calculate probs and logits
@@ -234,13 +98,6 @@ class inception_score():
             where_c = (classes == c)
             probs_c = prob[where_c]
             num_c = torch.sum(where_c)
-
-     #       import time
-    #        print(where_c)
-   #         print(probs_c, probs_c.shape)
-  #          print(torch.max(torch.mean(probs_c, dim = 0)), torch.mean(probs_c, dim=0))
- #           time.sleep(20)
-            
             class_cnt.append(num_c.item())
             pyc.append(torch.mean(probs_c,dim=0))
             prob_c.append(probs_c)
@@ -250,14 +107,7 @@ class inception_score():
         WCIS = 0
         for c in range(num_classes):
             p_class = class_cnt[c]/N
-           # KL_PYC_PY = entropy(pyc[c], mean_prob)
             KL_PYC_PY = (pyc[c] * (pyc[c].log() - mean_prob.log())).sum()
-#            print(KL_PYC_PY, entropy(pyc[c].cpu(), mean_prob.cpu()), p_class, class_cnt[c], N)
-           # print(f"class {c}: {pyc[c]}")
-           # print(f"mean prob: {mean_prob}")
-           # import time
-#            time.sleep(3)
-#            print(KL_PYC_PY)
             BCIS += p_class * KL_PYC_PY
 
             KL_PYX_PYC = 0
@@ -388,3 +238,60 @@ class frechet_inception_distance():
 
         # compute fid
         return _compute_fid(mean1, cov1, mean2, cov2).to(orig_dtype)
+
+    def compute_conditional(self):
+
+        classes = [c.item() for c in self.classes]
+        num_classes = len(set(classes))
+        classes = torch.FloatTensor(classes)
+
+
+        real_features = dim_zero_cat(self.real_features)
+        fake_features = dim_zero_cat(self.fake_features)
+        feature_dim = real_features.shape[1]
+
+        real_features_mean_c = torch.zeros((num_classes, feature_dim))
+        fake_features_mean_c = torch.zeros((num_classes, feature_dim))
+       
+        for c in range(num_classes):
+            where_c = (classes == c)
+            real_features_mean_c[c] = real_features[where_c].mean(dim=0)
+            fake_features_mean_c[c] = fake_features[where_c].mean(dim=0)
+
+
+         # computation is extremely sensitive so it needs to happen in double precision
+        orig_dtype = real_features.dtype
+        real_features = real_features.double()
+        fake_features = fake_features.double()
+
+        n = real_features.shape[0]
+        mean_real = real_features.mean(dim=0)
+        mean_fake = fake_features.mean(dim=0)
+        diff_real_c = real_features_mean_c - mean_real
+        diff_fake_c = fake_features_mean_c - mean_fake
+
+        cov_real_class = 1.0 / (num_classes - 1) * diff_real_c.t().mm(diff_real_c)
+        cov_fake_class = 1.0 / (num_classes - 1) * diff_fake_c.t().mm(diff_fake_c)
+        #
+        #cov_real  = 1.0 / (n - 1) * diff_real.t().mm(diff_real)
+        #cov_fake  = 1.0 / (n - 1) * diff_fake.t().mm(diff_fake)
+
+
+
+        BCFID = _compute_fid(mean_real, cov_real_class, mean_fake, cov_fake_class).to(orig_dtype)
+        WCFID = 0
+
+        for c in range(num_classes):
+            where_c = (classes == c)
+            num_c = torch.sum(where_c).item()
+            real_features_c = real_features[where_c]
+            fake_features_c = fake_features[where_c]
+            diff_real_features_c = real_features_mean_c - real_features_c
+            diff_fake_features_c = fake_features_mean_c - fake_features_c
+            cov_real_class_c = 1.0 / (num_c - 1) * diff_real_features_c.t().mm(diff_real_features_c)
+            cov_fake_class_c = 1.0 / (num_c - 1) * diff_fake_features_c.t().mm(diff_fake_features_c)
+            WCFID += _compute_fid(real_features_mean_c[c], cov_real_class_c, fake_features_mean_c[c], cov_fake_class_c).to(orig_dtype)
+        WCFID /= num_classes
+        return BCFID, WCFID
+
+
