@@ -526,7 +526,7 @@ class OptimizedBlock(nn.Module):
 
 
 class ConditionalBNDiscriminator64(nn.Module):
-    def __init__(self, channels=3,ch = 32,n_classes=0,leak =0,att = False):
+    def __init__(self, channels=3,ch = 32,n_classes=120,leak =0,att = False):
         super(ConditionalBNDiscriminator64, self).__init__()
         
         if leak >0:
@@ -546,7 +546,7 @@ class ConditionalBNDiscriminator64(nn.Module):
             
         self.fc =  SpectralNorm(nn.Linear(self.ch*16, 1)).apply(init_weight)
         if n_classes > 0:
-                self.embed_y = nn.Embedding(n_classes,ch * 16).apply(init_weight)
+            self.embed_y = nn.Embedding(n_classes,ch * 16).apply(init_weight)
 
     def forward(self, x,y=None):
         h = self.block1(x)
